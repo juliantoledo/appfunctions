@@ -49,6 +49,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
@@ -131,6 +132,7 @@ import com.example.appfunctions.agent.data.db.entities.ThreadEntity
 import com.example.appfunctions.agent.domain.AgentStatus
 import com.example.appfunctions.agent.domain.appfunction.AppInfo
 import com.example.appfunctions.agent.ui.screens.debugging.LazyExposedDropdownMenu
+import com.example.appfunctions.agent.voice.rememberLiveVoiceSessionLauncher
 import com.mikepenz.markdown.m3.Markdown
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -138,8 +140,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun AgentDemoScreen(viewModel: AgentDemoViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val launchLiveSession = rememberLiveVoiceSessionLauncher()
 
-    AgentDemoContent(uiState = uiState, onEvent = viewModel::onEvent)
+    AgentDemoContent(
+        uiState = uiState,
+        onEvent = viewModel::onEvent,
+        onLaunchLiveSession = launchLiveSession,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -148,6 +155,7 @@ fun AgentDemoContent(
     uiState: AgentUiState,
     onEvent: (AgentUiEvent) -> Unit,
     initialSidePanelVisible: Boolean = false,
+    onLaunchLiveSession: (threadId: String, targetPackageName: String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
@@ -177,6 +185,7 @@ fun AgentDemoContent(
                         scope = scope,
                         packageManager = packageManager,
                         initialSidePanelVisible = initialSidePanelVisible,
+                        onLaunchLiveSession = onLaunchLiveSession,
                     )
                 }
             }
@@ -227,6 +236,7 @@ fun AgentDemoLoadedScreen(
     scope: CoroutineScope,
     packageManager: PackageManager,
     initialSidePanelVisible: Boolean = false,
+    onLaunchLiveSession: (threadId: String, targetPackageName: String?) -> Unit = { _, _ -> },
 ) {
     var messageText by remember { mutableStateOf(TextFieldValue("")) }
     var isSidePanelVisible by remember { mutableStateOf(initialSidePanelVisible) }
@@ -469,18 +479,42 @@ fun AgentDemoLoadedScreen(
                                 focusedBorderColor = Color.Transparent,
                             ),
                         trailingIcon = {
-                            IconButton(
-                                onClick = sendMessage,
-                                enabled =
-                                    uiState.currentThread != null &&
-                                        messageText.text.isNotBlank() &&
-                                        uiState.status == AgentStatus.Idle,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(end = 4.dp),
                             ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription =
-                                        stringResource(R.string.agent_demo_send),
-                                )
+                                IconButton(
+                                    onClick = {
+                                        val threadId = uiState.currentThread?.threadId
+                                        if (threadId != null) {
+                                            onLaunchLiveSession(
+                                                threadId,
+                                                selectedAppPackageName,
+                                            )
+                                        }
+                                    },
+                                    enabled = uiState.currentThread != null,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.GraphicEq,
+                                        contentDescription =
+                                            stringResource(R.string.agent_demo_live_start),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                IconButton(
+                                    onClick = sendMessage,
+                                    enabled =
+                                        uiState.currentThread != null &&
+                                            messageText.text.isNotBlank() &&
+                                            uiState.status == AgentStatus.Idle,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Send,
+                                        contentDescription =
+                                            stringResource(R.string.agent_demo_send),
+                                    )
+                                }
                             }
                         },
                     )
@@ -600,10 +634,7 @@ fun ModelDropdown(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .menuAnchor(
-                                ExposedDropdownMenuAnchorType.PrimaryEditable,
-                                enabled = true,
-                            ),
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
